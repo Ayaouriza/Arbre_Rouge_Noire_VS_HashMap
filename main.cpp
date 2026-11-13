@@ -3,8 +3,8 @@
 #include <cstring>
 #include <cmath>
 #include <chrono>
-#include <map>
 #include <new>
+#include <unordered_map>
 using namespace std;
 
 enum Couleur { ROUGE, NOIR };
@@ -457,8 +457,19 @@ struct SArbre {
 };
 
 // Adaptateur pour std::map
-struct SMap {
+/*struct SMap {
     map<int, int> m;
+    void ins(int v)   { m.insert(make_pair(v, v)); }
+    void sup(int v)   { m.erase(v); }
+    bool rech(int v)  { return m.find(v) != m.end(); }
+    int  taille()     { return (int)m.size(); }
+    int  hauteur()    { return 0; }
+    bool valide()     { return true; }
+};*/
+// Adaptateur pour std::unordered_map (table de hachage)
+struct SHash {
+    unordered_map<int, int> m;
+    SHash() { m.max_load_factor(1.0f); }   // facteur de charge par defaut, explicite
     void ins(int v)   { m.insert(make_pair(v, v)); }
     void sup(int v)   { m.erase(v); }
     bool rech(int v)  { return m.find(v) != m.end(); }
@@ -591,11 +602,11 @@ Mesures tester(int N, int pctTrie) {
     return r;
 }
 
-void ligneTableau(const char* nom, long long nbOps, double moyArbre, double moyMap) {
-    double rapport = (moyMap > 0) ? moyArbre / moyMap : 0;
+void ligneTableau(const char* nom, long long nbOps, double moyArbre, double moyHash) {
+    double rapport = (moyHash > 0) ? moyArbre / moyHash : 0;
     // les moyennes arrivent en secondes : on affiche en millisecondes
     printf("| %-12s | %11lld | %13.7f | %13.7f | %11.2f |\n",
-           nom, nbOps, moyArbre * 1000.0, moyMap * 1000.0, rapport);
+           nom, nbOps, moyArbre * 1000.0, moyHash * 1000.0, rapport);
 }
 
 void comparer(const int* tailles, int nb, int pctTrie) {
@@ -609,11 +620,11 @@ void comparer(const int* tailles, int nb, int pctTrie) {
 
         // Une seule structure en memoire a la fois
         Mesures a = tester<SArbre>(N, pctTrie);
-        Mesures m = tester<SMap>(N, pctTrie);
+        Mesures h = tester<SHash>(N, pctTrie);
 
-        if (!a.ok || !m.ok) {
-            printf("Memoire insuffisante pour N = %d (ArbreRN : %s, map : %s)\n",
-                   N, a.ok ? "ok" : "echec", m.ok ? "ok" : "echec");
+        if (!a.ok || !h.ok) {
+            printf("Memoire insuffisante pour N = %d (ArbreRN : %s, hash : %s)\n",
+                   N, a.ok ? "ok" : "echec", h.ok ? "ok" : "echec");
             continue;
         }
 
@@ -627,24 +638,23 @@ void comparer(const int* tailles, int nb, int pctTrie) {
                B, B / 2, B);
         printf("Temps moyen d'UNE operation, en millisecondes (ms)\n");
         printf("+--------------+-------------+---------------+---------------+-------------+\n");
-        printf("| Operation    | Nb d'ops    | ArbreRN (ms)  | map (ms)      | ArbreRN/map |\n");
+        printf("| Operation    | Nb d'ops    | ArbreRN (ms)  | hash (ms)     | ArbreRN/hash|\n");
         printf("+--------------+-------------+---------------+---------------+-------------+\n");
-        ligneTableau("Insertion",   a.nIns, a.tIns / a.nIns, m.tIns / m.nIns);
-        ligneTableau("Suppression", a.nSup, a.tSup / a.nSup, m.tSup / m.nSup);
-        ligneTableau("Recherche",   a.nRec, a.tRec / a.nRec, m.tRec / m.nRec);
+        ligneTableau("Insertion",   a.nIns, a.tIns / a.nIns, h.tIns / h.nIns);
+        ligneTableau("Suppression", a.nSup, a.tSup / a.nSup, h.tSup / h.nSup);
+        ligneTableau("Recherche",   a.nRec, a.tRec / a.nRec, h.tRec / h.nRec);
         printf("+--------------+-------------+---------------+---------------+-------------+\n");
-        printf("Temps total mesure (ms) : ArbreRN %.3f | map %.3f\n",
-               (a.tIns + a.tSup + a.tRec) * 1000.0, (m.tIns + m.tSup + m.tRec) * 1000.0);
-        printf("Taille finale attendue : %d | ArbreRN : %d | map : %d\n",
-               a.attendu, a.taille, m.taille);
+        printf("Temps total mesure (ms) : ArbreRN %.3f | hash %.3f\n",
+               (a.tIns + a.tSup + a.tRec) * 1000.0, (h.tIns + h.tSup + h.tRec) * 1000.0);
+        printf("Taille finale attendue : %d | ArbreRN : %d | hash : %d\n",
+               a.attendu, a.taille, h.taille);
         printf("Hauteur finale de l'ArbreRN : %d (maximum theorique 2*log2(n+1) = %.1f)\n",
                a.hauteur, 2 * log((double)a.taille + 1) / log(2.0));
         printf("Proprietes rouge-noir : %s\n", a.valide ? "valides" : "VIOLEES");
-        printf("Valeurs trouvees : ArbreRN %lld/%lld, map %lld/%lld\n",
-               a.trouves, a.nRec, m.trouves, m.nRec);
+        printf("Valeurs trouvees : ArbreRN %lld/%lld, hash %lld/%lld\n",
+               a.trouves, a.nRec, h.trouves, h.nRec);
     }
 }
-
 // =====================================================================
 
 int lireEntier(const char* message) {
@@ -675,8 +685,8 @@ int main() {
         cout << "2. Rechercher un nombre" << endl;
         cout << "3. Supprimer un nombre" << endl;
         cout << "4. Afficher l'arbre" << endl;
-        cout << "5. Comparer ArbreRN et map (1000, 10000, 100000, 1000000)" << endl;
-        cout << "6. Comparer ArbreRN et map (10000000, 100000000) - beaucoup de memoire" << endl;
+        cout << "5. Comparer ArbreRN et hashmap (1000, 10000, 100000, 1000000)" << endl;
+        cout << "6. Comparer ArbreRN et hashmap (10000000, 100000000) - beaucoup de memoire" << endl;
         cout << "7. Experience : valeurs presque triees (1000 a 10000000)" << endl;
         cout << "0. Quitter" << endl;
         choix = lireEntier("Votre choix : ");
@@ -715,7 +725,7 @@ int main() {
             cin >> rep;
             if (rep == 1) comparer(tailles, 2, ALEATOIRE);
         } else if (choix == 7) {
-            int tailles[] = {1000, 10000, 100000, 1000000, 10000000};
+            int tailles[] = {1000, 10000, 100000, 1000000};
             int p = lireEntier("Pourcentage de valeurs triees (90 pour 90%, 100 = totalement triee) : ");
             if (p < 0) p = 0;
             if (p > 100) p = 100;
